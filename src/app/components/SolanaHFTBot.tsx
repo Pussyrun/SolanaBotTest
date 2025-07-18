@@ -1,3 +1,6 @@
+'use client'
+
+import React, { useState, useEffect } from 'react';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, TrendingUp, Zap, Shield, Settings, DollarSign, AlertTriangle, Target, Grid, Bot, Eye, Wallet, Bell, Lock, Brain, Plus, Verified, Coins, BarChart3, Users, Timer, Globe } from 'lucide-react';
 
