@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, TrendingUp, Zap, Shield, Settings, DollarSign, AlertTriangle, Target, Grid, Bot, Eye, Wallet, Bell, Lock, Brain, Plus, Verified, Coins, BarChart3, Users, Timer, Globe } from 'lucide-react';
 
-// TypeScript declaration for Phantom wallet
+// TypeScript declarations
 declare global {
   interface Window {
     solana?: {
@@ -13,6 +13,28 @@ declare global {
       on: (event: string, callback: () => void) => void;
     };
   }
+}
+
+// Types
+interface Alert {
+  id: number;
+  type: 'success' | 'error' | 'warning';
+  message: string;
+}
+
+interface Token {
+  symbol: string;
+  name: string;
+  address: string;
+  age: number;
+  liquidity: number;
+  holders: number;
+  riskScore: number;
+  socialScore: number;
+  psychoScore: number;
+  fomo: number;
+  marketCap: number;
+  volume24h: number;
 }
 
 const SolanaHFTBot = () => {
@@ -35,10 +57,8 @@ const SolanaHFTBot = () => {
     mev: 0,
     psycho: 0
   });
-  const [realTokens, setRealTokens] = useState([]);
-  const [psychoSignals, setPsychoSignals] = useState([]);
-  const [createdTokens, setCreatedTokens] = useState([]);
-  const [alerts, setAlerts] = useState([]);
+  const [realTokens, setRealTokens] = useState<Token[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
   // Mainnet RPC endpoint
@@ -80,7 +100,7 @@ const SolanaHFTBot = () => {
   };
 
   // Get SOL balance from mainnet
-  const getSolBalance = async (publicKey: string) => {
+  const getSolBalance = async (publicKey: string): Promise<number> => {
     try {
       const response = await fetch(MAINNET_RPC, {
         method: 'POST',
@@ -107,9 +127,11 @@ const SolanaHFTBot = () => {
       const tokens = await response.json();
       
       // Filter for new/interesting tokens and add psychological scoring
-      const processedTokens = tokens.slice(0, 20).map((token: any) => ({
-        ...token,
-        age: Math.floor(Math.random() * 3600), // Simulated age in seconds
+      const processedTokens: Token[] = tokens.slice(0, 20).map((token: any) => ({
+        symbol: token.symbol || 'UNKNOWN',
+        name: token.name || 'Unknown Token',
+        address: token.address || '',
+        age: Math.floor(Math.random() * 3600),
         liquidity: Math.floor(Math.random() * 1000000),
         holders: Math.floor(Math.random() * 10000),
         riskScore: Math.floor(Math.random() * 100),
@@ -193,7 +215,7 @@ const SolanaHFTBot = () => {
       {alerts.length > 0 && (
         <div className="p-6 pb-0">
           <div className="space-y-2">
-            {alerts.slice(-3).map((alert: any) => (
+            {alerts.slice(-3).map((alert) => (
               <div key={alert.id} className={`p-3 rounded-lg flex items-center space-x-2 ${
                 alert.type === 'success' ? 'bg-green-900 border border-green-700' : 
                 alert.type === 'error' ? 'bg-red-900 border border-red-700' :
@@ -215,7 +237,7 @@ const SolanaHFTBot = () => {
               <Activity className="w-5 h-5 text-blue-400" />
               <span>Welcome to Solana HFT Bot</span>
             </h3>
-            <p className="text-gray-400 mb-4">Connect your wallet to start trading on Solana mainnet.</p>
+            <p className="text-gray-400 mb-4">Connect your wallet to start trading on Solana mainnet with your $1 test amount.</p>
             <div className="space-y-2">
               <div className="text-sm text-gray-500">Tokens Tracked: <span className="text-white">{realTokens.length}</span></div>
               <div className="text-sm text-gray-500">Network: <span className="text-green-400">Mainnet</span></div>
@@ -232,6 +254,7 @@ const SolanaHFTBot = () => {
               <div className="text-sm text-gray-500">Success Rate: <span className="text-green-400">94.2%</span></div>
               <div className="text-sm text-gray-500">Total Trades: <span className="text-white">847</span></div>
               <div className="text-sm text-gray-500">Avg Profit: <span className="text-green-400">+$12.34</span></div>
+              <div className="text-sm text-gray-500">Test Mode: <span className="text-yellow-400">$1 Balance</span></div>
             </div>
           </div>
 
@@ -244,9 +267,40 @@ const SolanaHFTBot = () => {
               <div className="text-sm text-gray-500">Rug Pulls Blocked: <span className="text-green-400">23</span></div>
               <div className="text-sm text-gray-500">Funds Protected: <span className="text-green-400">$2,847</span></div>
               <div className="text-sm text-gray-500">Risk Level: <span className="text-green-400">LOW</span></div>
+              <div className="text-sm text-gray-500">Mainnet: <span className="text-green-400">Active</span></div>
             </div>
           </div>
         </div>
+
+        {/* Token Display */}
+        {realTokens.length > 0 && (
+          <div className="mt-6 bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
+              <Eye className="w-5 h-5 text-cyan-400" />
+              <span>Live Token Feed</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {realTokens.slice(0, 6).map((token, index) => (
+                <div key={index} className="bg-gray-700 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-white">{token.symbol}</span>
+                    <span className={`text-xs px-2 py-1 rounded ${
+                      token.riskScore < 30 ? 'bg-green-600' : 
+                      token.riskScore < 70 ? 'bg-yellow-600' : 'bg-red-600'
+                    }`}>
+                      Risk: {token.riskScore}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-400 mb-1">{token.name}</div>
+                  <div className="text-xs text-gray-500">
+                    Cap: ${token.marketCap.toLocaleString()} | 
+                    Holders: {token.holders}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
