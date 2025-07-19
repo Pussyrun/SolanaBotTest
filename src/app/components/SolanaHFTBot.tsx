@@ -3,15 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { Wallet, Bot, Activity, Eye, Zap, TrendingUp, Target, BarChart3 } from 'lucide-react';
-
-// Polyfill for Buffer (for Jupiter swap tx decoding)
 import { Buffer } from 'buffer';
-if (typeof window !== 'undefined') {
-  (window as any).Buffer = Buffer;
-}
+if (typeof window !== 'undefined') (window as any).Buffer = Buffer;
 
-// 👉 Use your ACTUAL Helius endpoint below
-const RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=e8cf206a-9e32-4fa1-a60a-63119be7bfa3';
+// ---- Helius RPC endpoint with provided key ----
+const RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=614bf88d-3a0b-4e63-9425-01d87e03c3f5';
 const connection = new Connection(RPC_URL, 'confirmed');
 
 interface TokenInfo {
@@ -115,7 +111,6 @@ export default function SolanaHFTBot() {
     if (walletConnected && walletAddress) {
       fetchBalances(walletAddress);
     }
-    // eslint-disable-next-line
   }, [walletConnected, walletAddress]);
 
   // Jupiter swap/trade function
@@ -171,6 +166,7 @@ export default function SolanaHFTBot() {
       setSwapTx(sig);
       setAlerts(a => [...a, { type: 'success', message: 'Trade sent! Tx: ' + sig }]);
       setIsTrading(false);
+      // Refetch balances after a short wait
       setTimeout(() => fetchBalances(walletAddress), 7000);
     } catch (err: any) {
       setAlerts(a => [...a, { type: 'error', message: err.message }]);
@@ -194,7 +190,7 @@ export default function SolanaHFTBot() {
   }, [botStatus]);
 
   const toggleBot = (type: string) => {
-    setBotStatus(prev => ({ ...prev, [type]: !prev[type as keyof typeof prev] }));
+    setBotStatus(prev => ({ ...prev, [type]: !prev[type as keyof typeof botStatus] }));
     setAlerts(a => [...a, {
       type: botStatus[type as keyof typeof botStatus] ? 'warning' : 'success',
       message: `${type.toUpperCase()} bot ${botStatus[type as keyof typeof botStatus] ? 'stopped' : 'started'}`
