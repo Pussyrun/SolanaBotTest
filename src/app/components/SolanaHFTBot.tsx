@@ -10,8 +10,8 @@ if (typeof window !== 'undefined') {
   (window as any).Buffer = Buffer;
 }
 
-// 👉 Use your actual Helius endpoint below
-const RPC_URL = 'https://rpc.helius.xyz/?api-key=614bf88d-3a0b-4e63-9425-01d87e03c3f5';
+// 👉 Use your ACTUAL Helius endpoint below
+const RPC_URL = 'https://mainnet.helius-rpc.com/?api-key=e8cf206a-9e32-4fa1-a60a-63119be7bfa3';
 const connection = new Connection(RPC_URL, 'confirmed');
 
 interface TokenInfo {
