@@ -375,4 +375,73 @@ export default function SolanaHFTBot() {
         )}
 
         {activeTab === 'tokens' && (
-          <div className=
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* User tokens */}
+            <div>
+              <h2 className="text-lg font-bold mb-2 flex items-center gap-2"><Eye className="w-4 h-4" /> Your Tokens</h2>
+              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div className="flex items-center justify-between mb-2">
+                  <span>SOL</span>
+                  <span>{solBalance.toFixed(4)} SOL (${(solBalance * solPrice).toLocaleString(undefined,{maximumFractionDigits:2})})</span>
+                </div>
+                <hr className="mb-2 border-gray-600" />
+                {userTokens.length === 0 && <div className="text-gray-500 text-sm">No SPL tokens found.</div>}
+                {userTokens.map(t => (
+                  <div key={t.address} className="flex items-center justify-between py-1">
+                    <div className="flex items-center gap-2">
+                      <img src={t.logoURI} alt={t.symbol} className="w-5 h-5 rounded-full" />
+                      <span>{t.symbol}</span>
+                    </div>
+                    <div>{t.balance} ({t.name})</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Trade panel */}
+            <div>
+              <h2 className="text-lg font-bold mb-2 flex items-center gap-2"><Zap className="w-4 h-4" /> Trade SOL for Token (Jupiter)</h2>
+              <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                <div className="mb-2">
+                  <label className="block text-sm mb-1">Select Token to Buy:</label>
+                  <select
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    value={selectedToken?.address || ''}
+                    onChange={e => setSelectedToken(tokens.find(t => t.address === e.target.value) || null)}
+                  >
+                    <option value="">-- Choose --</option>
+                    {tokens.filter(t => t.symbol !== 'SOL').map(token => (
+                      <option key={token.address} value={token.address}>{token.symbol} - {token.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mb-2">
+                  <label className="block text-sm mb-1">Amount SOL to Swap:</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
+                    value={tradeAmount}
+                    onChange={e => setTradeAmount(e.target.value)}
+                    disabled={!walletConnected}
+                  />
+                </div>
+                <button
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-all disabled:bg-gray-600"
+                  disabled={!walletConnected || !selectedToken || !tradeAmount || isTrading}
+                  onClick={tradeToken}
+                >
+                  {isTrading ? 'Trading...' : 'Trade'}
+                </button>
+                {swapTx &&
+                  <div className="mt-3 text-green-400 text-xs">
+                    Trade sent! <a href={`https://solscan.io/tx/${swapTx}`} target="_blank" rel="noopener noreferrer" className="underline">View on Solscan</a>
+                  </div>
+                }
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
