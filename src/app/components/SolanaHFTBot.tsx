@@ -1,44 +1,80 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Connection } from '@solana/web3.js';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-const connection = new Connection(
-  'https://solana-mainnet.g.alchemy.com/v2/JVHlfnuzTGEkfHKOYP1W-SEgjCv1IzEt',
-  'confirmed'
-);
+const ALCHEMY_RPC = 'https://solana-mainnet.g.alchemy.com/v2/JVHlfnuzTGEkfHKOYP1W-SEgjCv1IzEt';
 
 const SolanaHFTBot = () => {
-  const { publicKey } = useWallet();
-  const [solBalance, setSolBalance] = useState<number | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const getBalance = async () => {
-      if (!publicKey) return;
+  // Connect to Phantom Wallet
+  const connectWallet = async () => {
+    if (window?.solana?.isPhantom) {
       try {
-        const balance = await connection.getBalance(publicKey);
-        const sol = balance / 1e9;
-        console.log('💰 SOL Balance:', sol);
-        setSolBalance(sol);
+        const resp = await window.solana.connect();
+        setWalletAddress(resp.publicKey.toString());
       } catch (err) {
-        console.error('❌ Error getting balance:', err);
+        console.error('User rejected connection', err);
+      }
+    } else {
+      alert('Phantom Wallet not detected. Install Phantom to use this bot.');
+    }
+  };
+
+  // Auto-detect wallet if already connected
+  useEffect(() => {
+    const checkIfWalletConnected = async () => {
+      try {
+        if (window?.solana?.isPhantom) {
+          const response = await window.solana.connect({ onlyIfTrusted: true });
+          setWalletAddress(response.publicKey.toString());
+        }
+      } catch (err) {
+        console.warn('Phantom not connected');
       }
     };
+    checkIfWalletConnected();
+  }, []);
 
-    getBalance();
-  }, [publicKey]);
+  // Get balance when wallet is connected
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (!walletAddress) return;
+      setLoading(true);
+      try {
+        const connection = new Connection(ALCHEMY_RPC, 'confirmed');
+        const publicKey = new PublicKey(walletAddress);
+        const lamports = await connection.getBalance(publicKey);
+        setBalance(lamports / LAMPORTS_PER_SOL);
+      } catch (err) {
+        console.error('Failed to fetch balance', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBalance();
+  }, [walletAddress]);
 
   return (
-    <div className="p-4 bg-zinc-900 text-white rounded">
-      <h2 className="text-xl font-bold mb-2">Phantom Wallet</h2>
-      {publicKey ? (
-        <>
-          <p className="mb-2">🔗 Connected: {publicKey.toBase58()}</p>
-          <p>💰 Balance: {solBalance !== null ? `${solBalance} SOL` : 'Loading...'}</p>
-        </>
+    <div style={{ padding: 20, fontFamily: 'Arial', background: '#0b0b0b', color: '#fff', minHeight: '100vh' }}>
+      <h1>🚀 Solana HFT Bot</h1>
+
+      {!walletAddress ? (
+        <button onClick={connectWallet} style={{ padding: '12px 24px', fontSize: 16, cursor: 'pointer' }}>
+          Connect Phantom Wallet
+        </button>
       ) : (
-        <p>🔌 Wallet not connected</p>
+        <div>
+          <p><strong>Wallet:</strong> {walletAddress}</p>
+          {loading ? (
+            <p>Fetching balance...</p>
+          ) : (
+            <p><strong>SOL Balance:</strong> {balance ?? '0'} SOL</p>
+          )}
+        </div>
       )}
     </div>
   );
