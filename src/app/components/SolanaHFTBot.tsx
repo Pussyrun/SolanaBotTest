@@ -4,14 +4,14 @@ import React, { useEffect, useState } from 'react';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { Wallet, Bot, Activity, Eye, Zap, TrendingUp, Target, BarChart3 } from 'lucide-react';
 
-// Polyfill for Buffer (needed for Jupiter swap transaction decoding)
+// Polyfill for Buffer (for Jupiter swap tx decoding)
 import { Buffer } from 'buffer';
 if (typeof window !== 'undefined') {
   (window as any).Buffer = Buffer;
 }
 
-// Mainnet RPC — USE PUBLIC
-const RPC_URL = 'https://api.mainnet-beta.solana.com';
+// 👉 Use your actual Helius endpoint below
+const RPC_URL = 'https://rpc.helius.xyz/?api-key=614bf88d-3a0b-4e63-9425-01d87e03c3f5';
 const connection = new Connection(RPC_URL, 'confirmed');
 
 interface TokenInfo {
@@ -171,7 +171,6 @@ export default function SolanaHFTBot() {
       setSwapTx(sig);
       setAlerts(a => [...a, { type: 'success', message: 'Trade sent! Tx: ' + sig }]);
       setIsTrading(false);
-      // Refetch balances after a short wait
       setTimeout(() => fetchBalances(walletAddress), 7000);
     } catch (err: any) {
       setAlerts(a => [...a, { type: 'error', message: err.message }]);
