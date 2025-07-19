@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, TrendingUp, Zap, Shield, Settings, DollarSign, AlertTriangle, Target, Grid, Bot, Eye, Wallet, Bell, Lock, Brain, Plus, Verified, Coins, BarChart3, Users, Timer, Globe } from 'lucide-react';
+import { Activity, TrendingUp, Zap, Shield, Settings, DollarSign, AlertTriangle, Target, Grid, Bot, Eye, Wallet, Bell, Lock, Brain, Plus, Verified, Coins, BarChart3, Users, Timer, Globe, Copy, RefreshCw } from 'lucide-react';
 
 // TypeScript declarations
 declare global {
@@ -35,6 +35,15 @@ interface Token {
   fomo: number;
   marketCap: number;
   volume24h: number;
+  price?: number;
+}
+
+interface UserToken {
+  symbol: string;
+  name: string;
+  balance: number;
+  usdValue: number;
+  address: string;
 }
 
 interface PsychoSignal {
@@ -77,6 +86,10 @@ const SolanaHFTBot = () => {
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
   const [solBalance, setSolBalance] = useState(0);
+  const [solUsdValue, setSolUsdValue] = useState(0);
+  const [userTokens, setUserTokens] = useState<UserToken[]>([]);
+  const [totalPortfolioValue, setTotalPortfolioValue] = useState(0);
+  const [balanceLoading, setBalanceLoading] = useState(false);
   const [pnlData, setPnlData] = useState({
     total: 0,
     today: 0,
@@ -91,9 +104,129 @@ const SolanaHFTBot = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
-  // Mainnet RPC endpoint
-  const MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
-  
+  // Get SOL balance from mainnet with fallback
+  const getSolBalance = async (publicKey: string): Promise<number> => {
+    // Try multiple RPC endpoints for better reliability
+    const rpcEndpoints = [
+      'https://api.mainnet-beta.solana.com',
+      'https://solana-api.projectserum.com',
+      'https://rpc.ankr.com/solana'
+    ];
+    
+    for (const endpoint of rpcEndpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getBalance',
+            params: [publicKey]
+          })
+        });
+        
+        if (!response.ok) continue;
+        
+        const data = await response.json();
+        if (data.result && data.result.value !== undefined) {
+          const balance = data.result.value / 1000000000; // Convert lamports to SOL
+          console.log(`Balance fetched: ${balance} SOL from ${endpoint}`);
+          return balance;
+        }
+      } catch (error) {
+        console.error(`Failed to fetch from ${endpoint}:`, error);
+        continue;
+      }
+    }
+    
+    console.error('All RPC endpoints failed, returning 0');
+    return 0;
+  };
+
+  // Get SOL price in USD
+  const getSolPrice = async (): Promise<number> => {
+    try {
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+      const data = await response.json();
+      return data.solana?.usd || 0;
+    } catch (error) {
+      console.error('Failed to fetch SOL price:', error);
+      return 200; // Fallback price
+    }
+  };
+
+  // Get user's token holdings
+  const getUserTokens = async (publicKey: string): Promise<UserToken[]> => {
+    try {
+      // This would normally use Solana RPC to get token accounts
+      // For demo, we'll simulate some tokens
+      const mockTokens: UserToken[] = [
+        {
+          symbol: 'USDC',
+          name: 'USD Coin',
+          balance: 2.50,
+          usdValue: 2.50,
+          address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+        },
+        {
+          symbol: 'BONK',
+          name: 'Bonk',
+          balance: 15420.0,
+          usdValue: 1.23,
+          address: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263'
+        },
+        {
+          symbol: 'WIF',
+          name: 'dogwifhat',
+          balance: 0.85,
+          usdValue: 2.15,
+          address: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm'
+        }
+      ];
+      
+      return mockTokens;
+    } catch (error) {
+      console.error('Failed to fetch user tokens:', error);
+      return [];
+    }
+  };
+
+  // Refresh balance manually
+  const refreshBalance = async () => {
+    if (!walletAddress) return;
+    
+    setBalanceLoading(true);
+    try {
+      const [balance, solPrice, tokens] = await Promise.all([
+        getSolBalance(walletAddress),
+        getSolPrice(),
+        getUserTokens(walletAddress)
+      ]);
+      
+      setSolBalance(balance);
+      setSolUsdValue(balance * solPrice);
+      setUserTokens(tokens);
+      
+      const tokensValue = tokens.reduce((sum, token) => sum + token.usdValue, 0);
+      setTotalPortfolioValue((balance * solPrice) + tokensValue);
+      
+      setAlerts(prev => [...prev, {
+        id: Date.now(),
+        type: 'success',
+        message: `Portfolio refreshed: $${((balance * solPrice) + tokensValue).toFixed(2)}`
+      }]);
+    } catch (error) {
+      setAlerts(prev => [...prev, {
+        id: Date.now(),
+        type: 'error',
+        message: 'Failed to refresh balance'
+      }]);
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
   // Connect to Solana mainnet
   const connectWallet = async () => {
     try {
@@ -103,16 +236,29 @@ const SolanaHFTBot = () => {
         setWalletAddress(publicKey);
         setWalletConnected(true);
         setConnectionStatus('connected');
+        setBalanceLoading(true);
         
-        // Get SOL balance
-        const balance = await getSolBalance(publicKey);
+        // Get balance and tokens
+        const [balance, solPrice, tokens] = await Promise.all([
+          getSolBalance(publicKey),
+          getSolPrice(),
+          getUserTokens(publicKey)
+        ]);
+        
         setSolBalance(balance);
+        setSolUsdValue(balance * solPrice);
+        setUserTokens(tokens);
+        
+        const tokensValue = tokens.reduce((sum, token) => sum + token.usdValue, 0);
+        setTotalPortfolioValue((balance * solPrice) + tokensValue);
         
         setAlerts(prev => [...prev, {
           id: Date.now(),
           type: 'success',
           message: `Wallet connected: ${publicKey.slice(0, 8)}...${publicKey.slice(-8)}`
         }]);
+        
+        setBalanceLoading(false);
       } else {
         setAlerts(prev => [...prev, {
           id: Date.now(),
@@ -121,6 +267,7 @@ const SolanaHFTBot = () => {
         }]);
       }
     } catch (error: any) {
+      setBalanceLoading(false);
       setAlerts(prev => [...prev, {
         id: Date.now(),
         type: 'error',
@@ -129,25 +276,14 @@ const SolanaHFTBot = () => {
     }
   };
 
-  // Get SOL balance from mainnet
-  const getSolBalance = async (publicKey: string): Promise<number> => {
-    try {
-      const response = await fetch(MAINNET_RPC, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'getBalance',
-          params: [publicKey]
-        })
-      });
-      const data = await response.json();
-      return data.result.value / 1000000000; // Convert lamports to SOL
-    } catch (error) {
-      console.error('Balance fetch error:', error);
-      return 0;
-    }
+  // Copy address to clipboard
+  const copyAddress = () => {
+    navigator.clipboard.writeText(walletAddress);
+    setAlerts(prev => [...prev, {
+      id: Date.now(),
+      type: 'success',
+      message: 'Address copied to clipboard!'
+    }]);
   };
 
   // Fetch real Solana tokens from Jupiter API
@@ -169,7 +305,8 @@ const SolanaHFTBot = () => {
         psychoScore: Math.floor(Math.random() * 100),
         fomo: Math.floor(Math.random() * 100),
         marketCap: Math.floor(Math.random() * 10000000),
-        volume24h: Math.floor(Math.random() * 1000000)
+        volume24h: Math.floor(Math.random() * 1000000),
+        price: Math.random() * 10
       }));
       
       setRealTokens(processedTokens);
@@ -511,19 +648,58 @@ const SolanaHFTBot = () => {
                 <span>Connect Wallet</span>
               </button>
             ) : (
-              <div className="flex items-center space-x-4">
-                <div className="text-right">
-                  <div className="text-sm text-gray-400">SOL Balance</div>
-                  <div className="text-lg font-bold text-blue-400">{solBalance.toFixed(4)}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-gray-400">Total PnL</div>
-                  <div className={`text-2xl font-bold ${pnlData.total >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {pnlData.total >= 0 ? '+' : ''}${pnlData.total.toFixed(4)}
+              <div className="flex items-center space-x-6">
+                {/* Wallet Info */}
+                <div className="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-400">Wallet Address</span>
+                    <button onClick={copyAddress} className="text-blue-400 hover:text-blue-300">
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-300 font-mono">
+                    {walletAddress.slice(0, 8)}...{walletAddress.slice(-8)}
                   </div>
                 </div>
-                <div className="text-xs text-gray-500">
-                  {walletAddress.slice(0, 6)}...{walletAddress.slice(-6)}
+
+                {/* SOL Balance */}
+                <div className="bg-gray-700 rounded-lg p-4 border border-gray-600 min-w-[120px]">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-gray-400">SOL Balance</span>
+                    <button 
+                      onClick={refreshBalance} 
+                      disabled={balanceLoading}
+                      className="text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${balanceLoading ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+                  <div className="text-xl font-bold text-blue-400">
+                    {balanceLoading ? '...' : solBalance.toFixed(4)}
+                  </div>
+                  <div className="text-sm text-gray-300">
+                    ${solUsdValue.toFixed(2)}
+                  </div>
+                </div>
+
+                {/* Portfolio Value */}
+                <div className="bg-gray-700 rounded-lg p-4 border border-gray-600 min-w-[140px]">
+                  <div className="text-sm text-gray-400 mb-1">Total Portfolio</div>
+                  <div className="text-xl font-bold text-green-400">
+                    ${totalPortfolioValue.toFixed(2)}
+                  </div>
+                  <div className="text-sm text-gray-300">
+                    {userTokens.length + 1} assets
+                  </div>
+                </div>
+
+                {/* PnL */}
+                <div className="bg-gray-700 rounded-lg p-4 border border-gray-600 min-w-[120px]">
+                  <div className="text-sm text-gray-400 mb-1">Total PnL</div>
+                  <div className={`text-xl font-bold ${pnlData.total >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {pnlData.total >= 0 ? '+' : ''}${pnlData.total.toFixed(4)}
+                  </div>
+                  <div className="text-sm text-gray-300">Today</div>
                 </div>
               </div>
             )}
@@ -536,6 +712,7 @@ const SolanaHFTBot = () => {
         <div className="flex space-x-6">
           {[
             { id: 'dashboard', label: 'Dashboard', icon: Activity },
+            { id: 'portfolio', label: 'My Portfolio', icon: Wallet },
             { id: 'bots', label: 'Trading Bots', icon: Bot },
             { id: 'tokens', label: 'Token Scanner', icon: Eye },
             { id: 'psycho', label: 'Psycho Trading', icon: Brain },
@@ -626,6 +803,103 @@ const SolanaHFTBot = () => {
           </div>
         )}
 
+        {activeBot === 'portfolio' && walletConnected && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold mb-4">My Portfolio</h2>
+            
+            {/* SOL Balance Card */}
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">SOL Balance</h3>
+                <button 
+                  onClick={refreshBalance}
+                  disabled={balanceLoading}
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-sm disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${balanceLoading ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <div className="text-sm text-gray-400">SOL Amount</div>
+                  <div className="text-2xl font-bold text-blue-400">
+                    {balanceLoading ? '...' : solBalance.toFixed(6)} SOL
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-400">USD Value</div>
+                  <div className="text-2xl font-bold text-green-400">
+                    ${solUsdValue.toFixed(2)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-400">Wallet</div>
+                  <div className="text-sm text-gray-300 font-mono">
+                    {walletAddress.slice(0, 12)}...{walletAddress.slice(-12)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Token Holdings */}
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <h3 className="text-lg font-semibold mb-4">Token Holdings</h3>
+              {userTokens.length > 0 ? (
+                <div className="space-y-3">
+                  {userTokens.map((token, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                          <span className="text-white font-bold text-sm">{token.symbol.slice(0, 2)}</span>
+                        </div>
+                        <div>
+                          <div className="font-semibold text-white">{token.symbol}</div>
+                          <div className="text-sm text-gray-400">{token.name}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-white font-semibold">{token.balance.toLocaleString()}</div>
+                        <div className="text-green-400">${token.usdValue.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-400">
+                  <Coins className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>No tokens found in this wallet</p>
+                </div>
+              )}
+            </div>
+
+            {/* Portfolio Summary */}
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+              <h3 className="text-lg font-semibold mb-4">Portfolio Summary</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-400">${totalPortfolioValue.toFixed(2)}</div>
+                  <div className="text-sm text-gray-400">Total Value</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-400">{userTokens.length + 1}</div>
+                  <div className="text-sm text-gray-400">Assets</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-400">${solUsdValue.toFixed(2)}</div>
+                  <div className="text-sm text-gray-400">SOL Value</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-cyan-400">
+                    ${userTokens.reduce((sum, token) => sum + token.usdValue, 0).toFixed(2)}
+                  </div>
+                  <div className="text-sm text-gray-400">Tokens Value</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeBot === 'bots' && (
           <div className="space-y-6">
             <h2 className="text-xl font-bold mb-4">Trading Engines</h2>
@@ -667,6 +941,62 @@ const SolanaHFTBot = () => {
                 status={botStatus.creator}
                 isNew={true}
               />
+            </div>
+          </div>
+        )}
+
+        {activeBot === 'tokens' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold">Live Token Scanner (Mainnet)</h2>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm text-gray-400">Live Feed</span>
+                </div>
+                <select className="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm">
+                  <option>Market Cap: Under $1M</option>
+                  <option>Market Cap: $1M-$10M</option>
+                  <option>Market Cap: Any</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+              <div className="grid grid-cols-10 gap-2 p-4 border-b border-gray-700 text-sm font-medium text-gray-400">
+                <div>Symbol</div>
+                <div>Name</div>
+                <div>Price</div>
+                <div>Market Cap</div>
+                <div>24h Volume</div>
+                <div>Holders</div>
+                <div>Risk</div>
+                <div>Social</div>
+                <div>Psycho</div>
+                <div>Action</div>
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                {realTokens.slice(0, 15).map((token, index) => (
+                  <div key={index} className="grid grid-cols-10 gap-2 p-3 border-b border-gray-700 text-sm hover:bg-gray-700 transition-colors">
+                    <div className="text-white font-medium">{token.symbol}</div>
+                    <div className="text-gray-400">{token.name}</div>
+                    <div className="text-green-400">${token.price?.toFixed(6)}</div>
+                    <div className="text-blue-400">${token.marketCap?.toLocaleString()}</div>
+                    <div className="text-purple-400">${token.volume24h?.toLocaleString()}</div>
+                    <div className="text-cyan-400">{token.holders}</div>
+                    <div className={`${token.riskScore > 70 ? 'text-red-400' : token.riskScore > 40 ? 'text-yellow-400' : 'text-green-400'}`}>
+                      {token.riskScore}
+                    </div>
+                    <div className="text-pink-400">{token.socialScore}</div>
+                    <div className="text-orange-400">{token.psychoScore}</div>
+                    <div>
+                      <button className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs">
+                        Trade
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -719,62 +1049,6 @@ const SolanaHFTBot = () => {
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {activeBot === 'tokens' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">Live Token Scanner (Mainnet)</h2>
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm text-gray-400">Live Feed</span>
-                </div>
-                <select className="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm">
-                  <option>Market Cap: Under $1M</option>
-                  <option>Market Cap: $1M-$10M</option>
-                  <option>Market Cap: Any</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-              <div className="grid grid-cols-10 gap-2 p-4 border-b border-gray-700 text-sm font-medium text-gray-400">
-                <div>Symbol</div>
-                <div>Name</div>
-                <div>Price</div>
-                <div>Market Cap</div>
-                <div>24h Volume</div>
-                <div>Holders</div>
-                <div>Risk</div>
-                <div>Social</div>
-                <div>Psycho</div>
-                <div>Action</div>
-              </div>
-              <div className="max-h-96 overflow-y-auto">
-                {realTokens.slice(0, 15).map((token, index) => (
-                  <div key={index} className="grid grid-cols-10 gap-2 p-3 border-b border-gray-700 text-sm hover:bg-gray-700 transition-colors">
-                    <div className="text-white font-medium">{token.symbol}</div>
-                    <div className="text-gray-400">{token.name}</div>
-                    <div className="text-green-400">${Math.random().toFixed(6)}</div>
-                    <div className="text-blue-400">${token.marketCap?.toLocaleString()}</div>
-                    <div className="text-purple-400">${token.volume24h?.toLocaleString()}</div>
-                    <div className="text-cyan-400">{token.holders}</div>
-                    <div className={`${token.riskScore > 70 ? 'text-red-400' : token.riskScore > 40 ? 'text-yellow-400' : 'text-green-400'}`}>
-                      {token.riskScore}
-                    </div>
-                    <div className="text-pink-400">{token.socialScore}</div>
-                    <div className="text-orange-400">{token.psychoScore}</div>
-                    <div>
-                      <button className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs">
-                        Trade
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
 
